@@ -13,42 +13,52 @@ Parameters:
     MaxLength: 100
     ConstraintDescription: You must enter the EKS cluster name
 
-  GitSourceRepo:
+  GitLabOrganization:
     Type: String
-    Description: Git source repository
+    Description: GitLab organization containing the repositories
+    Default: pedrojmendoza
+    MinLength: 1
+    MaxLength: 100
+    ConstraintDescription: You must enter a GitLab organization name
+    
+  GitCodeRepo:
+    Type: String
+    Description: Git repository for code
     Default: SpringBootCode
     MinLength: 1
     MaxLength: 100
-    ConstraintDescription: You must enter a GitHub repository name
+    ConstraintDescription: You must enter a Git repository name
 
-  GitBranch:
+  GitCodeBranch:
     Type: String
     Default: master
-    Description: GitHub git repository branch - change triggers a new build
+    Description: Git repository branch for code - change triggers a new build
     MinLength: 1
     MaxLength: 100
-    ConstraintDescription: You must enter a GitHub repository branch name
+    ConstraintDescription: You must enter a Git repository branch name
+
+  GitConfigRepo:
+    Type: String
+    Description: Git repository for config
+    Default: SpringBootConfig
+    MinLength: 1
+    MaxLength: 100
+    ConstraintDescription: You must enter a Git repository name
+
+  GitConfigBranch:
+    Type: String
+    Default: master
+    Description: Git repository branch for config - change triggers a new build
+    MinLength: 1
+    MaxLength: 100
+    ConstraintDescription: You must enter a Git repository branch name
 
   GitLabS3Bucket:
     Type: String
     Description: S3 bucket used in the integration with GitLab
     MinLength: 3
     MaxLength: 63
-    ConstraintDescription: You must enter an S3 bucket name integrated with GitLab
-
-  GitLabS3KeyCode:
-    Type: String
-    Description: S3 bucket key in the integration with GitLab for code (without initial /)
-    MinLength: 1
-    MaxLength: 1024
-    ConstraintDescription: You must enter an S3 object key integrated with GitLab
-
-  GitLabS3KeyConfig:
-    Type: String
-    Description: S3 bucket key in the integration with GitLab for config (without initial /)
-    MinLength: 1
-    MaxLength: 1024
-    ConstraintDescription: You must enter an S3 object key integrated with GitLab
+    ConstraintDescription: You must enter an S3 bucket name integrated with GitLab repos
 
   CodeBuildDockerImage:
     Type: String
@@ -95,11 +105,12 @@ Metadata:
       - Label:
           default: Git
         Parameters:
-          - GitSourceRepo
-          - GitBranch
+          - GitLabOrganization
+          - GitCodeRepo
+          - GitCodeBranch
+          - GitConfigRepo
+          - GitConfigBranch
           - GitLabS3Bucket
-          - GitLabS3KeyCode
-          - GitLabS3KeyConfig
       - Label:
           default: CodeBuild
         Parameters:
@@ -122,6 +133,7 @@ Resources:
 
   CodePipelineArtifactBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -230,6 +242,10 @@ Resources:
                   - ecr:InitiateLayerUpload
                   - ecr:UploadLayerPart
                   - ecr:CompleteLayerUpload
+              - Resource: !Sub arn:aws:s3:::${GitLabS3Bucket}/*
+                Effect: Allow
+                Action:
+                  - s3:*
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -253,7 +269,7 @@ Resources:
                 - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
             pre_build:
               commands:
-                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$(cat checkout_sha.txt | head -c 8)"
+                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$(cat checkout_sha.txt)"
                 - cp $CODEBUILD_SRC_DIR_AppConfig/$K8S_CONFIG_FILE_NAME .
                 - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
@@ -281,9 +297,9 @@ Resources:
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
           - Name: REPOSITORY_NAME
-            Value: !Ref GitSourceRepo
+            Value: !Ref GitCodeRepo
           - Name: REPOSITORY_BRANCH
-            Value: !Ref GitBranch
+            Value: !Ref GitCodeBranch
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: JAR_OUTPUT_FILE_NAME
@@ -301,8 +317,7 @@ Resources:
       Artifacts:
         Type: NO_ARTIFACTS
       Source:
-        Type: S3
-        Location: !Sub ${GitLabS3Bucket}/${GitLabS3KeyConfig}
+        Type: NO_SOURCE
         BuildSpec: |
           version: 0.2
           phases:
@@ -317,7 +332,9 @@ Resources:
                 - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
             pre_build:
               commands:
-                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$EKS_SHA_TO_DEPLOY"
+                - aws s3 cp s3://$CONFIG_S3_LOCATION.$EKS_CONFIG_SHA_TO_DEPLOY.zip config.zip
+                - unzip config.zip
+                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$EKS_CODE_SHA_TO_DEPLOY"
                 - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
                 - export KUBECONFIG=$HOME/.kube/config
@@ -338,17 +355,21 @@ Resources:
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
           - Name: REPOSITORY_NAME
-            Value: !Ref GitSourceRepo
+            Value: !Ref GitCodeRepo
           - Name: REPOSITORY_BRANCH
-            Value: !Ref GitBranch
+            Value: !Ref GitCodeBranch
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: EKS_CLUSTER_NAME
             Value: !Ref EksClusterName
+          - Name: CONFIG_S3_LOCATION
+            Value: !Sub ${GitLabS3Bucket}/${GitLabOrganization}/${GitConfigRepo}/${GitConfigBranch}/${GitConfigRepo}
           - Name: EKS_KUBECTL_ROLE_ARN
             Value: !Sub arn:aws:iam::${TargetAccountNumberProd}:role/${KubectlRoleName}
-          - Name: EKS_SHA_TO_DEPLOY
-            Value: REPLACE_ME_WITH_SHA_TO_DEPLOY
+          - Name: EKS_CODE_SHA_TO_DEPLOY
+            Value: REPLACE_ME_WITH_CODE_SHA_TO_DEPLOY
+          - Name: EKS_CONFIG_SHA_TO_DEPLOY
+            Value: REPLACE_ME_WITH_CONFIG_SHA_TO_DEPLOY
       Name: !Sub ${AWS::StackName}-DeployOnly
       ServiceRole: !GetAtt CodeBuildServiceRole.Arn
 
@@ -370,7 +391,7 @@ Resources:
                 Provider: S3
               Configuration:
                 S3Bucket: !Ref GitLabS3Bucket
-                S3ObjectKey: !Ref GitLabS3KeyCode
+                S3ObjectKey: !Sub ${GitLabOrganization}/${GitCodeRepo}/${GitCodeBranch}/${GitCodeRepo}.zip
               OutputArtifacts:
                 - Name: AppCode
               RunOrder: 1
@@ -382,7 +403,7 @@ Resources:
                 Provider: S3
               Configuration:
                 S3Bucket: !Ref GitLabS3Bucket
-                S3ObjectKey: !Ref GitLabS3KeyConfig
+                S3ObjectKey: !Sub ${GitLabOrganization}/${GitConfigRepo}/${GitConfigBranch}/${GitConfigRepo}.zip
               OutputArtifacts:
                 - Name: AppConfig
               RunOrder: 1
