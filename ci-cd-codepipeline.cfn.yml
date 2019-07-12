@@ -13,7 +13,6 @@ Parameters:
     MaxLength: 100
     ConstraintDescription: You must enter the EKS cluster name
 
-  # TODO: Update this to final repo name
   GitSourceRepo:
     Type: String
     Description: Git source repository
@@ -62,7 +61,7 @@ Parameters:
   KubectlRoleName:
     Type: String
     Default: CodeBuildEksRole
-    Description: IAM role used by kubectl to interact with EKS cluster
+    Description: IAM role name (in the target accounts) used by kubectl to interact with EKS cluster
     MinLength: 3
     MaxLength: 100
     ConstraintDescription: You must enter a kubectl IAM role
@@ -75,7 +74,12 @@ Parameters:
     Description: AWS AccountNumber where EKS cluster used for manual deployment is
     Type: Number
 
+  EcrDockerRepository:
+    Description: Name of the ECR repo to be used to store docker images
+    Type: String
+
 Metadata:
+
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
@@ -119,28 +123,8 @@ Metadata:
 
 Resources:
 
-  EcrDockerRepository:
-    Type: AWS::ECR::Repository
-    DeletionPolicy: Retain
-    Properties:
-      RepositoryPolicyText:
-        Version: "2012-10-17"
-        Statement:
-            -
-              Sid: AllowPull
-              Effect: Allow
-              Principal:
-                AWS:
-                  - !Sub arn:aws:iam::${TargetAccountNumberDev}:root
-                  - !Sub arn:aws:iam::${TargetAccountNumberProd}:root
-              Action:
-                - "ecr:GetDownloadUrlForLayer"
-                - "ecr:BatchGetImage"
-                - "ecr:BatchCheckLayerAvailability"
-
   CodePipelineArtifactBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
