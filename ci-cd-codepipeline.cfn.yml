@@ -332,7 +332,7 @@ Resources:
                 - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
             pre_build:
               commands:
-                - aws s3 cp s3://$CONFIG_S3_LOCATION.$EKS_CONFIG_SHA_TO_DEPLOY.zip config.zip
+                - aws s3 cp "s3://$CONFIG_S3_LOCATION.$EKS_CONFIG_SHA_TO_DEPLOY.zip" config.zip
                 - unzip config.zip
                 - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$EKS_CODE_SHA_TO_DEPLOY"
                 - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
