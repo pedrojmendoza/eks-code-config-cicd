@@ -5,9 +5,17 @@ Description: EKSWSV1
 
 Parameters:
 
-  EksClusterName:
+  EksClusterNameDev:
     Type: String
-    Description: The name of the EKS cluster created
+    Description: The name of the EKS cluster created in the DEV env (continuous deployment)
+    Default: eksworkshop-eksctl
+    MinLength: 1
+    MaxLength: 100
+    ConstraintDescription: You must enter the EKS cluster name
+
+  EksClusterNameProd:
+    Type: String
+    Description: The name of the EKS cluster created in the PROD env (manual deployment)
     Default: eksworkshop-eksctl
     MinLength: 1
     MaxLength: 100
@@ -121,7 +129,8 @@ Metadata:
           default: ECR/EKS
         Parameters:
           - EcrDockerRepository
-          - EksClusterName
+          - EksClusterNameDev
+          - EksClusterNameProd
           - KubectlRoleName
       - Label:
           default: Target accounts
@@ -305,7 +314,7 @@ Resources:
           - Name: JAR_OUTPUT_FILE_NAME
             Value: !Ref JarOutputFilename
           - Name: EKS_CLUSTER_NAME
-            Value: !Ref EksClusterName
+            Value: !Ref EksClusterNameDev
           - Name: EKS_KUBECTL_ROLE_ARN
             Value: !Sub arn:aws:iam::${TargetAccountNumberDev}:role/${KubectlRoleName}
       Name: !Ref AWS::StackName
@@ -361,7 +370,7 @@ Resources:
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: EKS_CLUSTER_NAME
-            Value: !Ref EksClusterName
+            Value: !Ref EksClusterNameProd
           - Name: CONFIG_S3_LOCATION
             Value: !Sub ${GitLabS3Bucket}/${GitLabOrganization}/${GitConfigRepo}/${GitConfigBranch}/${GitConfigRepo}
           - Name: EKS_KUBECTL_ROLE_ARN
