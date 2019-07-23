@@ -294,18 +294,17 @@ Resources:
             pre_build:
               commands:
                 - POM_VERSION=$(xmllint --xpath "//*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
-                - TAG="$REPOSITORY_NAME.$POM_VERSION"
                 - cp $CODEBUILD_SRC_DIR_AppConfig/$K8S_CONFIG_FILE_NAME .
-                - sed -i 's@CONTAINER_IMAGE@'"$ECR_REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
+                - sed -i 's@CONTAINER_IMAGE@'"$ECR_REPOSITORY_URI:$POM_VERSION"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
                 - export KUBECONFIG=$HOME/.kube/config
             build:
               commands:
                 - mvn package
-                - docker build --build-arg JAR_FILE=target/$JAR_OUTPUT_FILE_NAME-$POM_VERSION.jar --tag $ECR_REPOSITORY_URI:$TAG --tag $ECR_REPOSITORY_URI:$DOCKER_ENV_IMAGE_TAG .
+                - docker build --build-arg JAR_FILE=target/$JAR_OUTPUT_FILE_NAME-$POM_VERSION.jar --tag $ECR_REPOSITORY_URI:$POM_VERSION --tag $ECR_REPOSITORY_URI:$DOCKER_ENV_IMAGE_TAG .
             post_build:
               commands:
-                - docker push $ECR_REPOSITORY_URI:$TAG
+                - docker push $ECR_REPOSITORY_URI:$POM_VERSION
                 - docker push $ECR_REPOSITORY_URI:$DOCKER_ENV_IMAGE_TAG
                 - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
                 - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
@@ -322,8 +321,6 @@ Resources:
         EnvironmentVariables:
           - Name: ECR_REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
-          - Name: REPOSITORY_NAME
-            Value: !Ref GitCodeRepo
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: JAR_OUTPUT_FILE_NAME
@@ -360,13 +357,12 @@ Resources:
               commands:
                 - aws s3 cp "s3://$CONFIG_S3_LOCATION.$EKS_CONFIG_SHA_TO_DEPLOY.zip" config.zip
                 - unzip config.zip
-                - TAG="$REPOSITORY_NAME.$EKS_VERSION_TO_DEPLOY"
-                - sed -i 's@CONTAINER_IMAGE@'"$ECR_REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
+                - sed -i 's@CONTAINER_IMAGE@'"$ECR_REPOSITORY_URI:$EKS_VERSION_TO_DEPLOY"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
                 - export KUBECONFIG=$HOME/.kube/config
             post_build:
               commands:
-                - MANIFEST=$(aws ecr batch-get-image --repository-name $ECR_REPOSITORY_NAME --image-ids imageTag=$TAG --query 'images[].imageManifest' --output text)
+                - MANIFEST=$(aws ecr batch-get-image --repository-name $ECR_REPOSITORY_NAME --image-ids imageTag=$EKS_VERSION_TO_DEPLOY --query 'images[].imageManifest' --output text)
                 - aws ecr put-image --repository-name $ECR_REPOSITORY_NAME --image-tag $DOCKER_ENV_IMAGE_TAG --image-manifest "${MANIFEST}"
                 - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
                 - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
@@ -384,8 +380,6 @@ Resources:
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
           - Name: ECR_REPOSITORY_NAME
             Value: !Ref EcrDockerRepository
-          - Name: REPOSITORY_NAME
-            Value: !Ref GitCodeRepo
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: EKS_CLUSTER_NAME
