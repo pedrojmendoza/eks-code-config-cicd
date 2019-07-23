@@ -278,7 +278,8 @@ Resources:
                 - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
             pre_build:
               commands:
-                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$(cat checkout_sha.txt)"
+                - POM_VERSION=$(xmllint --xpath "//*[local-name()='project']/*[local-name()='version']/text()" pom.xml)
+                - TAG="$REPOSITORY_NAME.$POM_VERSION"
                 - cp $CODEBUILD_SRC_DIR_AppConfig/$K8S_CONFIG_FILE_NAME .
                 - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
@@ -307,8 +308,6 @@ Resources:
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
           - Name: REPOSITORY_NAME
             Value: !Ref GitCodeRepo
-          - Name: REPOSITORY_BRANCH
-            Value: !Ref GitCodeBranch
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: JAR_OUTPUT_FILE_NAME
@@ -343,7 +342,7 @@ Resources:
               commands:
                 - aws s3 cp "s3://$CONFIG_S3_LOCATION.$EKS_CONFIG_SHA_TO_DEPLOY.zip" config.zip
                 - unzip config.zip
-                - TAG="$REPOSITORY_NAME.$REPOSITORY_BRANCH.$EKS_CODE_SHA_TO_DEPLOY"
+                - TAG="$REPOSITORY_NAME.$EKS_VERSION_TO_DEPLOY"
                 - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' $K8S_CONFIG_FILE_NAME
                 - $(aws ecr get-login --no-include-email)
                 - export KUBECONFIG=$HOME/.kube/config
@@ -365,8 +364,6 @@ Resources:
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrDockerRepository}
           - Name: REPOSITORY_NAME
             Value: !Ref GitCodeRepo
-          - Name: REPOSITORY_BRANCH
-            Value: !Ref GitCodeBranch
           - Name: K8S_CONFIG_FILE_NAME
             Value: !Ref k8sConfigFilename
           - Name: EKS_CLUSTER_NAME
@@ -375,8 +372,8 @@ Resources:
             Value: !Sub ${GitLabS3Bucket}/${GitLabOrganization}/${GitConfigRepo}/${GitConfigBranch}/${GitConfigRepo}
           - Name: EKS_KUBECTL_ROLE_ARN
             Value: !Sub arn:aws:iam::${TargetAccountNumberProd}:role/${KubectlRoleName}
-          - Name: EKS_CODE_SHA_TO_DEPLOY
-            Value: REPLACE_ME_WITH_CODE_SHA_TO_DEPLOY
+          - Name: EKS_VERSION_TO_DEPLOY
+            Value: REPLACE_ME_WITH_CODE_VERSION_TO_DEPLOY
           - Name: EKS_CONFIG_SHA_TO_DEPLOY
             Value: REPLACE_ME_WITH_CONFIG_SHA_TO_DEPLOY
       Name: !Sub ${AWS::StackName}-DeployOnly
